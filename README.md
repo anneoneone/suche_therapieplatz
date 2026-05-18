@@ -134,6 +134,11 @@ the endpoint returns 503 and the frontend shows an inline "not configured"
 notice — everything else still works, the user just writes the body
 themselves.
 
+| Env var | Default | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | _unset_ | Enables the feature when set. |
+| `GEMINI_MODEL`   | `gemini-2.5-flash-lite` | Override the model without redeploying. Useful when Google rotates free-tier quotas (e.g. `gemini-2.5-flash`, `gemini-flash-latest`). Check your account's quota at <https://ai.dev/rate-limit>. |
+
 No PII is sent to the LLM: only the target language, insurance label,
 and previously sent bodies to the same therapists (for anti-repetition).
 Greeting, contact info, and closing are inserted client-side after

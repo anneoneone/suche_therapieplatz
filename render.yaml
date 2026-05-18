@@ -20,3 +20,7 @@ services:
       # it the endpoint returns 503 and the frontend shows an inline notice.
       - key: GEMINI_API_KEY
         sync: false
+      # Optional: override the Gemini model id without redeploying.
+      # Defaults to gemini-2.5-flash-lite (current free-tier-friendly).
+      - key: GEMINI_MODEL
+        sync: false
