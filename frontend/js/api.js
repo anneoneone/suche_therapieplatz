@@ -96,6 +96,27 @@ export async function parseUrl(url) {
 }
 
 /**
+ * Live-crawl a therapist directory around an address, server-side.
+ * @param {{source?: string, address: string, radiusKm: number, maxResults?: number, requireEmail?: boolean}} args
+ * @returns {Promise<Object>} - Parse response with therapists, total, with_email
+ */
+export async function crawlSource({ source = 'psychotherapeutensuche', address, radiusKm, maxResults = 30, requireEmail = false }) {
+    return request('/therapists/crawl', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            source,
+            address,
+            radius_km: radiusKm,
+            max_results: maxResults,
+            require_email: requireEmail,
+        }),
+    });
+}
+
+/**
  * Generate email drafts for therapists.
  * @param {Array} therapists - List of therapist objects
  * @param {Object} userInfo - User information

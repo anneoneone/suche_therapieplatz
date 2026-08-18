@@ -8,7 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>window.API_BASE = 'https://therapist-finder-api.onrender.com/api';</script>
+    <script>
+        // Use the hosted API unless the frontend itself is served locally
+        // (e.g. by uvicorn), where the same-origin '/api' fallback applies.
+        if (!['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+            window.API_BASE = 'https://therapist-finder-api.onrender.com/api';
+        }
+    </script>
 </head>
 <body>
     <div class="app">
@@ -52,9 +58,65 @@
             <section class="view card" id="view-url">
                 <div class="card-header">
                     <span class="step-badge">1</span>
-                    <h2 data-i18n="step1.heading">Load therapists from a PDF</h2>
+                    <h2 data-i18n="step1.heading">Load therapists</h2>
                 </div>
                 <div class="card-body">
+                    <div class="form-group">
+                        <label for="source-select" data-i18n="step1.sourceLabel">Data source</label>
+                        <select id="source-select" class="lang-select">
+                            <option value="psych_info" data-i18n="step1.sourcePsychInfo">Psych-Info (PDF list)</option>
+                            <option value="psychotherapeutensuche" data-i18n="step1.sourcePsychotherapeutensuche">Psychotherapeutensuche.de (live search)</option>
+                            <option value="ptk_bayern" data-i18n="step1.sourcePtkBayern">PTK Bayern (live search, Bavaria)</option>
+                        </select>
+                    </div>
+
+                    <div id="crawl-section" hidden>
+                        <form id="crawl-form" class="form">
+                            <div class="form-group">
+                                <label for="crawl-address" data-i18n="step1.crawlAddressLabel">Address or postal code *</label>
+                                <input
+                                    type="text"
+                                    id="crawl-address"
+                                    name="crawl_address"
+                                    data-i18n-placeholder="step1.crawlAddressPlaceholder"
+                                    placeholder="Kastanienallee 12, 10435 Berlin"
+                                    required>
+                            </div>
+                            <div class="form-group">
+                                <label for="crawl-radius" data-i18n="step1.crawlRadiusLabel">Search radius</label>
+                                <select id="crawl-radius" class="lang-select">
+                                    <option value="1">1 km</option>
+                                    <option value="2">2 km</option>
+                                    <option value="5">5 km</option>
+                                    <option value="10" selected>10 km</option>
+                                    <option value="25">25 km</option>
+                                    <option value="50">50 km</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="crawl-email-only-group" hidden>
+                                <label>
+                                    <input type="checkbox" id="crawl-email-only">
+                                    <span data-i18n="step1.crawlEmailOnly">Only therapists with an email address</span>
+                                </label>
+                            </div>
+                            <p class="dropzone-hint" id="crawl-hint-pts" data-i18n="step1.crawlHint">
+                                We search psychotherapeutensuche.de live around your address.
+                                This takes up to half a minute — please be patient.
+                                Profiles there list phone numbers but no email addresses.
+                            </p>
+                            <p class="dropzone-hint" id="crawl-hint-ptk" data-i18n="step1.crawlHintPtk" hidden>
+                                We query the PTK Bayern therapist directory live around your
+                                address (Bavaria only). Roughly a third of the entries include
+                                an email address.
+                            </p>
+                            <button type="submit" class="btn btn-primary btn-lg" id="crawl-btn">
+                                <span class="btn-text" data-i18n="step1.crawlBtn">Search therapists</span>
+                                <span class="btn-loader" hidden></span>
+                            </button>
+                        </form>
+                        <div class="status" id="crawl-status" hidden></div>
+                    </div>
+
                     <div id="search-section">
                         <details class="instructions-details" id="psych-info-help">
                             <summary data-i18n="step1.howToTitle">How to get the PDF URL from Psych-Info</summary>

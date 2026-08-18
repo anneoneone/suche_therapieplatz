@@ -30,6 +30,18 @@ class SearchParams(BaseModel):
         default_factory=list,
         description="Required spoken languages (source-specific)",
     )
+    postal_code: str | None = Field(
+        default=None,
+        description=(
+            "Postal code of the search origin, for sources whose upstream "
+            "search is PLZ-based rather than coordinate-based (e.g. PTK "
+            "Bayern)"
+        ),
+    )
+    city: str | None = Field(
+        default=None,
+        description="City of the search origin (fallback for PLZ-based sources)",
+    )
 
 
 class TherapistSource(ABC):

@@ -13,10 +13,40 @@ providers** ranked by haversine distance.
 | `osm`         | OpenStreetMap Overpass                  | Free ODbL    | Crowdsourced, incl. some private-pay practices |
 | `psych_info`  | `psych-info.de` (voluntary chamber reg.) | **Residential only** | Private-only Approbierte that 116117 misses |
 | `therapie_de` | `therapie.de` Berlin listing            | **Residential only** | Heilpraktiker (HP-Psychotherapie) + private   |
+| `psychotherapeutensuche` | `psychotherapeutensuche.de` (PsyOS GmbH) | Public HTML | Nationwide voluntary directory (~10.6k profiles), incl. private-pay |
+| `ptk_bayern`  | PTK Bayern Suchdienst (`ptk-bayern.de`) | Public JSON | **Bavaria only** — best email coverage (~30% of entries) |
 
-The first two work from anywhere and are the defaults. The last two require
-a residential IP — every test run from a cloud / GitHub Actions runner was
-WAF-blocked (`"Sie haben leider keinen Zugriff auf diese Seite"`).
+The first two work from anywhere and are the defaults. `psych_info` and
+`therapie_de` require a residential IP — every test run from a cloud /
+GitHub Actions runner was WAF-blocked (`"Sie haben leider keinen Zugriff
+auf diese Seite"`).
+
+`psychotherapeutensuche` is the friendliest scrape target so far: TYPO3 +
+Codappix SearchCore (Elasticsearch) serving plain server-rendered HTML.
+The radius search is a GET on `/therapeuten/?search[searchRequest][filter]
+[distance][...]` (lat/lon + one of 1/2/5/10/25/50 km; page 2+ at
+`/therapeuten/seite/{n}/`), results come back distance-sorted, and profile
+pages carry schema.org `Person` microdata (name, jobTitle, gender, address,
+telephone) plus a Kostenträger card (GKV / Privat / Kostenerstattung).
+Profiles list **no email addresses** — contact is phone or the site's form.
+robots.txt only disallows `/suche/?*` + `/typo3/*` and publishes a
+`therapists.xml` sitemap; the URLs we fetch are allowed. Verified working
+from a residential IP; cloud/CI behaviour is untested (no WAF observed).
+It also backs the frontend's live search via `POST /api/therapists/crawl`.
+
+`ptk_bayern` is even friendlier: the chamber's Lotus-Domino search form
+(`/ptk/web.nsf/formular?openForm&formular=depsychotherapeutensuche`) is
+backed by a JSON agent at
+`/ptk/adressen.nsf/ptk_search_psychotherapeuten?OpenAgent&plz=…&umkreis=…`
+that returns the **complete result set in one request** — name, academic
+title, address, phone, **email** (~30% of entries; the only source besides
+116117/OSM that exposes emails at all), homepage, lat/lon coordinates,
+patient group (kin/erw) and GKV/PKV flags. Send `versicherung=pkvgkv` and
+`abrechnung=pkvgkv` (the form defaults) — omitting them yields an empty
+result set. The upstream search is PLZ/Ort-based, so `SearchParams.
+postal_code` (or `city`) must be set. robots.txt has no Disallow rules.
+Coverage is Bavaria only. The crawl endpoint supports it via
+`{"source": "ptk_bayern", ...}` plus an optional `require_email` filter.
 
 **Skipped on purpose:**
 

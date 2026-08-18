@@ -13,6 +13,7 @@ from ...parsers.pdf_parser import PDFParser
 from ...parsers.text_parser import TextParser
 from ...sources import specialties
 from ..schemas import (
+    CrawlRequest,
     ParseResponse,
     ParseUrlRequest,
     SpecialtiesResponse,
@@ -52,6 +53,108 @@ async def list_specialties() -> SpecialtiesResponse:
             for s in specialties.all_specialties()
         ],
         default=specialties.DEFAULT_KEY,
+    )
+
+
+@router.post("/crawl", response_model=ParseResponse)
+def crawl_directory(request: CrawlRequest) -> ParseResponse:
+    """Live-crawl a therapist directory around a geocoded address.
+
+    Supports ``psychotherapeutensuche`` (nationwide, distance-sorted
+    upstream, no emails) and ``ptk_bayern`` (Bavaria, single JSON request,
+    ~30% with emails, coordinates included). Results are ranked by distance
+    via :func:`merge_and_rank` where coordinates are available; without
+    them the upstream order is preserved. Declared ``def`` (not ``async``)
+    on purpose: the sources do blocking HTTP, so FastAPI runs the handler
+    in the threadpool.
+    """
+    import re
+
+    from ...sources.base import SearchParams
+    from ...sources.geocode import Geocoder, GeocodingError
+    from ...sources.merger import merge_and_rank
+    from ...sources.psychotherapeutensuche import PsychotherapeutensucheSource
+    from ...sources.ptk_bayern import PTKBayernSource
+
+    if request.source not in ("psychotherapeutensuche", "ptk_bayern"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown crawl source: {request.source!r}",
+        )
+    if request.require_email and request.source == "psychotherapeutensuche":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "psychotherapeutensuche.de lists no email addresses; "
+                "use source 'ptk_bayern' or drop require_email"
+            ),
+        )
+
+    settings = Settings()
+    geocoder = Geocoder(
+        endpoint=settings.geocoder_endpoint,
+        user_agent=settings.scraper_user_agent,
+        cache_dir=settings.http_cache_dir,
+    )
+    try:
+        origin = geocoder.geocode(request.address, require_berlin=False)
+    except GeocodingError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not geocode address: {e}",
+        ) from e
+    finally:
+        geocoder.close()
+
+    plz_match = re.search(r"\b(\d{5})\b", f"{request.address} {origin.display_name}")
+    # ptk_bayern returns the full result set in one request, so over-fetch
+    # when filtering on email and cap after the filter.
+    limit_per_source = 500 if request.require_email else request.max_results
+    params = SearchParams(
+        lat=origin.lat,
+        lon=origin.lon,
+        radius_km=request.radius_km,
+        limit_per_source=limit_per_source,
+        postal_code=plz_match.group(1) if plz_match else None,
+        city=None if plz_match else request.address,
+    )
+
+    if request.source == "ptk_bayern":
+        source: PTKBayernSource | PsychotherapeutensucheSource = PTKBayernSource(
+            user_agent=settings.scraper_user_agent
+        )
+    else:
+        # 0.6s pacing keeps a max_results=30 crawl (~33 requests) around
+        # 20-25s — polite, yet fast enough for a synchronous request.
+        source = PsychotherapeutensucheSource(
+            user_agent=settings.scraper_user_agent,
+            min_delay_seconds=0.6,
+        )
+    try:
+        found = source.search(params)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=f"Crawl failed: {e}",
+        ) from e
+    finally:
+        source.close()
+
+    if request.require_email:
+        found = [t for t in found if t.email]
+    therapists = merge_and_rank(
+        {source.name: found},
+        origin.lat,
+        origin.lon,
+        request.max_results,
+    )
+
+    therapist_responses = [_therapist_to_response(t) for t in therapists]
+    with_email = sum(1 for t in therapists if t.email)
+    return ParseResponse(
+        therapists=therapist_responses,
+        total=len(therapists),
+        with_email=with_email,
     )
 
 

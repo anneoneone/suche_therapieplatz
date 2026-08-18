@@ -51,6 +51,33 @@ class ParseUrlRequest(BaseModel):
     )
 
 
+class CrawlRequest(BaseModel):
+    """Request to live-crawl a therapist directory around an address."""
+
+    source: str = Field(
+        default="psychotherapeutensuche",
+        description=(
+            "Directory to crawl: 'psychotherapeutensuche' (nationwide, no "
+            "emails) or 'ptk_bayern' (Bavaria, ~30% with emails)"
+        ),
+    )
+    address: str = Field(
+        ...,
+        min_length=3,
+        description="Free-text address, PLZ, or city to search around",
+    )
+    radius_km: float = Field(
+        default=10.0, ge=1.0, le=50.0, description="Search radius in kilometres"
+    )
+    max_results: int = Field(
+        default=30, ge=1, le=100, description="Maximum providers to return"
+    )
+    require_email: bool = Field(
+        default=False,
+        description="Only return therapists that list an email address",
+    )
+
+
 class SpecialtyOption(BaseModel):
     """A selectable specialty for the search UI dropdown."""
 

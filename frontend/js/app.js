@@ -6,6 +6,7 @@
 import {
     APIError,
     aiGenerateMailBody,
+    crawlSource,
     downloadFile,
     generateEmails,
     getContactCounts,
@@ -57,12 +58,17 @@ const TRUNCATION_MARKER = '\n\n[… truncated — use "Copy body" to paste full 
 
 const STEPS = ['url', 'overview', 'me', 'template', 'send'];
 
+const CRAWL_SOURCES = ['psychotherapeutensuche', 'ptk_bayern'];
+
 // ============================================
 // State (persisted to sessionStorage, except `file`)
 // ============================================
 
 const defaultState = () => ({
+    source: 'psych_info',
     pdfUrl: '',
+    crawlAddress: '',
+    crawlRadius: '10',
     therapists: [],
     userInfo: {},
     templateBody: '',
@@ -104,6 +110,17 @@ const $ = (id) => document.getElementById(id);
 const elements = {
     // Step 1
     viewUrl: $('view-url'),
+    sourceSelect: $('source-select'),
+    crawlSection: $('crawl-section'),
+    crawlForm: $('crawl-form'),
+    crawlAddress: $('crawl-address'),
+    crawlRadius: $('crawl-radius'),
+    crawlBtn: $('crawl-btn'),
+    crawlStatus: $('crawl-status'),
+    crawlEmailOnlyGroup: $('crawl-email-only-group'),
+    crawlEmailOnly: $('crawl-email-only'),
+    crawlHintPts: $('crawl-hint-pts'),
+    crawlHintPtk: $('crawl-hint-ptk'),
     searchSection: $('search-section'),
     searchForm: $('search-form'),
     searchBtn: $('search-btn'),
@@ -284,6 +301,10 @@ function onEnterStep(step) {
     switch (step) {
         case 'url':
             if (state.pdfUrl) elements.searchPdfUrl.value = state.pdfUrl;
+            if (state.crawlAddress) elements.crawlAddress.value = state.crawlAddress;
+            if (state.crawlRadius) elements.crawlRadius.value = state.crawlRadius;
+            elements.sourceSelect.value = state.source;
+            updateSourceSections();
             break;
         case 'overview':
             renderTherapists();
@@ -308,6 +329,72 @@ function setEntrySection(target) {
     const showSearch = target === 'search';
     elements.searchSection.hidden = !showSearch;
     elements.uploadSection.hidden = showSearch;
+}
+
+/**
+ * Show the entry section matching the selected data source: the live-crawl
+ * form for psychotherapeutensuche, the PDF URL / upload flow for psych-info.
+ */
+function updateSourceSections() {
+    const isCrawl = CRAWL_SOURCES.includes(state.source);
+    const isPtk = state.source === 'ptk_bayern';
+    elements.crawlSection.hidden = !isCrawl;
+    elements.crawlEmailOnlyGroup.hidden = !isPtk;
+    elements.crawlHintPts.hidden = isPtk;
+    elements.crawlHintPtk.hidden = !isPtk;
+    if (isCrawl) {
+        elements.searchSection.hidden = true;
+        elements.uploadSection.hidden = true;
+    } else {
+        setEntrySection('search');
+    }
+}
+
+function handleSourceChange(event) {
+    state.source = event.target.value;
+    persistState();
+    updateSourceSections();
+}
+
+async function handleCrawlSubmit(event) {
+    event.preventDefault();
+    const address = elements.crawlAddress.value.trim();
+    if (!address) return;
+    const radiusKm = Number(elements.crawlRadius.value) || 10;
+
+    setButtonLoading(elements.crawlBtn, true);
+    showStatus(elements.crawlStatus, t('step1.statusCrawling'), 'info');
+
+    try {
+        const result = await crawlSource({
+            source: state.source,
+            address,
+            radiusKm,
+            requireEmail: state.source === 'ptk_bayern' && elements.crawlEmailOnly.checked,
+        });
+        state.crawlAddress = address;
+        state.crawlRadius = String(radiusKm);
+        state.therapists = result.therapists || [];
+        state.pdfUrl = '';
+        state.results = null;
+        persistState();
+
+        const total = state.therapists.length;
+        const withEmail = state.therapists.filter((th) => th.email).length;
+        const key = total === 1 ? 'step1.statusParsedSingular' : 'step1.statusParsedPlural';
+        showStatus(elements.crawlStatus, t(key, { total, withEmail }), 'success');
+
+        navigate('overview');
+    } catch (error) {
+        console.error('Crawl error:', error);
+        showStatus(
+            elements.crawlStatus,
+            error instanceof APIError ? error.message : t('step1.statusCrawlFailed'),
+            'error'
+        );
+    } finally {
+        setButtonLoading(elements.crawlBtn, false);
+    }
 }
 
 async function handlePdfUrlSubmit(event) {
@@ -1232,6 +1319,8 @@ async function handleAiGenerate() {
 function initEventListeners() {
     // Step 1
     elements.searchForm.addEventListener('submit', handlePdfUrlSubmit);
+    elements.sourceSelect.addEventListener('change', handleSourceChange);
+    elements.crawlForm.addEventListener('submit', handleCrawlSubmit);
     elements.toggleUpload.addEventListener('click', (e) => {
         e.preventDefault();
         setEntrySection('upload');
