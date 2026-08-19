@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,12 @@ from fastapi.testclient import TestClient
 from therapist_finder.api.main import app
 from therapist_finder.models import TherapistData
 from therapist_finder.sources.geocode import GeocodingError, Location
+
+# sources/__init__.py re-exports the geocode *function*, which shadows the
+# submodule on attribute access — both mock.patch("…sources.geocode.Geocoder")
+# and `from therapist_finder.sources import geocode` can resolve to the
+# function depending on interpreter version. import_module is unambiguous.
+geocode_module = importlib.import_module("therapist_finder.sources.geocode")
 
 
 def _fake_geocoder(location: Location | None = None) -> MagicMock:
@@ -46,7 +53,7 @@ def test_crawl_happy_path() -> None:
 
     client = TestClient(app)
     with (
-        patch("therapist_finder.sources.geocode.Geocoder", return_value=geocoder),
+        patch.object(geocode_module, "Geocoder", return_value=geocoder),
         patch(
             "therapist_finder.sources.psychotherapeutensuche."
             "PsychotherapeutensucheSource",
@@ -102,7 +109,7 @@ def test_crawl_ptk_bayern_ranks_and_filters_email() -> None:
 
     client = TestClient(app)
     with (
-        patch("therapist_finder.sources.geocode.Geocoder", return_value=geocoder),
+        patch.object(geocode_module, "Geocoder", return_value=geocoder),
         patch(
             "therapist_finder.sources.ptk_bayern.PTKBayernSource",
             return_value=source,
@@ -158,7 +165,7 @@ def test_crawl_rejects_unknown_source() -> None:
 def test_crawl_geocoding_failure_is_400() -> None:
     geocoder = _fake_geocoder(location=None)
     client = TestClient(app)
-    with patch("therapist_finder.sources.geocode.Geocoder", return_value=geocoder):
+    with patch.object(geocode_module, "Geocoder", return_value=geocoder):
         resp = client.post(
             "/api/therapists/crawl",
             json={"address": "Nowhereville 999"},
