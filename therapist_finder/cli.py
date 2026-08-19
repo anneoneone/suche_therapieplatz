@@ -283,7 +283,8 @@ def crawl_berlin(
         help=(
             "Comma-separated source names. Default is CI-safe (116117,osm). "
             "Residential-only sources (psych_info, therapie_de) require a "
-            "laptop / residential IP."
+            "laptop / residential IP. psychotherapeutensuche works nationwide "
+            "and has no known WAF."
         ),
     ),
     output_dir: Path | None = typer.Option(
@@ -316,12 +317,16 @@ def crawl_berlin(
         f"(lat={origin.lat:.5f}, lon={origin.lon:.5f})"
     )
 
+    import re as _re
+
+    plz_match = _re.search(r"\b(\d{5})\b", f"{address} {origin.display_name}")
     params = SearchParams(
         specialty=specialty,
         lat=origin.lat,
         lon=origin.lon,
         radius_km=radius_km,
         limit_per_source=max(max_results * 3, 50),
+        postal_code=plz_match.group(1) if plz_match else None,
     )
 
     source_instances = _build_sources(requested, settings)
@@ -375,6 +380,8 @@ def _build_sources(requested: list[str], settings: Settings) -> list[_SourceLike
     from .parsers.arztsuche_api import Arztsuche116117Source
     from .sources.overpass import OverpassSource
     from .sources.psych_info import PsychInfoSource
+    from .sources.psychotherapeutensuche import PsychotherapeutensucheSource
+    from .sources.ptk_bayern import PTKBayernSource
     from .sources.therapie_de import TherapieDeSource
 
     residential = set(settings.residential_only_sources)
@@ -408,6 +415,15 @@ def _build_sources(requested: list[str], settings: Settings) -> list[_SourceLike
                     min_delay_seconds=max(settings.scraper_min_delay_seconds, 3.0),
                 )
             )
+        elif name == "psychotherapeutensuche":
+            instances.append(
+                PsychotherapeutensucheSource(
+                    user_agent=settings.scraper_user_agent,
+                    min_delay_seconds=settings.scraper_min_delay_seconds,
+                )
+            )
+        elif name == "ptk_bayern":
+            instances.append(PTKBayernSource(user_agent=settings.scraper_user_agent))
         else:
             rprint(f"[yellow]⚠ Unknown source: {name}[/yellow]")
     return instances

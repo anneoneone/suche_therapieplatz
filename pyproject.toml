@@ -99,6 +99,7 @@ module = [
     "pdfplumber",
     "PyPDF2",
     "bs4",
+    "bs4.*",
     "playwright",
     "playwright.*",
     "gender_guesser",

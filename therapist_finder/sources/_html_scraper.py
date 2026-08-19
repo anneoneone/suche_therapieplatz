@@ -21,6 +21,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 import httpx
 
 from therapist_finder.models import TherapistData
@@ -157,7 +158,7 @@ class HTMLScraper(TherapistSource):
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 
-def text_of(soup: BeautifulSoup, selectors: str) -> str:
+def text_of(soup: Tag, selectors: str) -> str:
     """Return whitespace-cleaned text of the first element matching ``selectors``."""
     el = soup.select_one(selectors)
     return el.get_text(" ", strip=True) if el else ""
